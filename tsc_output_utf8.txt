@@ -1,0 +1,5 @@
+﻿src/components/ConsentBanner.tsx(2,20): error TS6133: 'Check' is declared but its value is never read.
+src/components/ConsentBanner.tsx(40,9): error TS6133: 'handleAcceptSelected' is declared but its value is never read.
+src/components/ConsentBanner.tsx(56,9): error TS6133: 'togglePurpose' is declared but its value is never read.
+src/components/ConsentBanner.tsx(64,9): error TS6133: 'purposes' is declared but its value is never read.
+src/pages/Contact.tsx(5,1): error TS6192: All imports in import declaration are unused.

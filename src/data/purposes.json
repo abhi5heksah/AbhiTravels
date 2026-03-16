@@ -1,0 +1,44 @@
+[
+  {
+    "id": "booking_confirmations",
+    "name": "Booking Confirmations",
+    "description": "Booking confirmations & changes",
+    "required": true,
+    "locked": true
+  },
+  {
+    "id": "price_alerts",
+    "name": "Price Alerts & Offers",
+    "description": "Get notified when fares drop",
+    "required": false,
+    "locked": false
+  },
+  {
+    "id": "personalized_recommendations",
+    "name": "Personalized Recommendations",
+    "description": "Based on your travel history",
+    "required": false,
+    "locked": false
+  },
+  {
+    "id": "marketing_communications",
+    "name": "Marketing Communications",
+    "description": "Receive exclusive travel deals",
+    "required": false,
+    "locked": false
+  },
+  {
+    "id": "analytics",
+    "name": "Analytics",
+    "description": "Help us improve our service",
+    "required": false,
+    "locked": false
+  },
+  {
+    "id": "third_party_promotions",
+    "name": "Third-party Promotions",
+    "description": "Personalized ads based on preferences",
+    "required": false,
+    "locked": false
+  }
+]
