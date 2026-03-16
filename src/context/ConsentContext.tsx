@@ -1,38 +1,48 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
 import { 
-  getConsent, 
-   
-  clearConsent as removeConsent,
+  getConsents, 
   getPurposes,
   setPurposes as savePurposes,
+  getHistory,
+  addHistoryEntry,
   type ConsentData,
+  type HistoryEntry,
   getTheme,
   setTheme as saveTheme
 } from '../services/localStorage';
-import { loadFormPurposes, recordConsent, type Purpose } from '../services/consentApi';
+import { 
+  loadFormPurposes, 
+  recordConsent, 
+  getIPAddress,
+  type Purpose 
+} from '../services/consentApi';
 
 interface ConsentContextType {
-  consent: ConsentData | null;
+  consents: Record<string, ConsentData>;
+  history: HistoryEntry[];
   purposes: Purpose[];
   userPurposes: Record<string, boolean>;
   theme: string;
   setUserPurposes: (purposes: Record<string, boolean>) => void;
-  saveConsent: (email: string, purposes: { id: string; granted: boolean }[]) => Promise<void>;
-  revokeConsent: () => void;
+  saveConsent: (email: string, purposes: { id: string; granted: boolean }[], action?: 'granted' | 'revoked' | 'updated', source?: string) => Promise<void>;
+  revokeConsent: (email: string, source?: string) => void;
   setTheme: (theme: string) => void;
-  hasConsent: () => boolean;
+  hasConsent: (email: string) => boolean;
+  getConsentForEmail: (email: string) => ConsentData | null;
 }
 
 const ConsentContext = createContext<ConsentContextType | undefined>(undefined);
 
 export function ConsentProvider({ children }: { children: ReactNode }) {
-  const [consent, setConsentState] = useState<ConsentData | null>(null);
+  const [consents, setConsentsState] = useState<Record<string, ConsentData>>({});
+  const [history, setHistoryState] = useState<HistoryEntry[]>([]);
   const [purposes, setPurposes] = useState<Purpose[]>([]);
   const [userPurposes, setUserPurposesState] = useState<Record<string, boolean>>({});
   const [theme, setThemeState] = useState<string>('light');
 
   useEffect(() => {
-    setConsentState(getConsent());
+    setConsentsState(getConsents());
+    setHistoryState(getHistory());
     setUserPurposesState(getPurposes());
     setThemeState(getTheme());
     
@@ -44,15 +54,43 @@ export function ConsentProvider({ children }: { children: ReactNode }) {
     savePurposes(purposes);
   };
 
-  const handleSaveConsent = async (email: string, consentPurposes: { id: string; granted: boolean }[]) => {
+  const handleSaveConsent = async (
+    email: string, 
+    consentPurposes: { id: string; granted: boolean }[],
+    action: 'granted' | 'revoked' | 'updated' = 'granted',
+    source: string = 'web'
+  ) => {
+    const ip = await getIPAddress();
+    const userAgent = navigator.userAgent;
+    const metadata = { ip, userAgent, source };
+
     const apiPurposes = consentPurposes.map(p => ({ purpose_id: p.id, granted: p.granted }));
-    await recordConsent(email, apiPurposes);
-    setConsentState(getConsent());
+    await recordConsent(email, apiPurposes, metadata);
+    
+    // Create history entry
+    const entry: HistoryEntry = {
+      email,
+      action,
+      purposes: consentPurposes,
+      timestamp: new Date().toISOString(),
+      ...metadata
+    };
+    addHistoryEntry(entry);
+    
+    // Update local storage via the API service's implicit local storage keep, 
+    // but we also need to update our plural consents map.
+    const updatedConsents = getConsents();
+    setConsentsState(updatedConsents);
+    setHistoryState(getHistory());
   };
 
-  const handleRevokeConsent = () => {
-    removeConsent();
-    setConsentState(null);
+  const handleRevokeConsent = (email: string, source: string = 'web') => {
+    const existing = consents[email];
+    const revokePurposes = existing 
+      ? existing.purposes.map(p => ({ ...p, granted: false }))
+      : purposes.map(p => ({ id: p.id, granted: false }));
+      
+    handleSaveConsent(email, revokePurposes, 'revoked', source);
   };
 
   const handleSetTheme = (newTheme: string) => {
@@ -61,13 +99,19 @@ export function ConsentProvider({ children }: { children: ReactNode }) {
     document.documentElement.setAttribute('data-theme', newTheme);
   };
 
-  const hasConsent = () => {
-    return consent !== null && consent.granted;
+  const hasConsent = (email: string) => {
+    const c = consents[email];
+    return c !== undefined && c.granted;
+  };
+
+  const getConsentForEmail = (email: string) => {
+    return consents[email] || null;
   };
 
   return (
     <ConsentContext.Provider value={{
-      consent,
+      consents,
+      history,
       purposes,
       userPurposes,
       theme,
@@ -76,6 +120,7 @@ export function ConsentProvider({ children }: { children: ReactNode }) {
       revokeConsent: handleRevokeConsent,
       setTheme: handleSetTheme,
       hasConsent,
+      getConsentForEmail,
     }}>
       {children}
     </ConsentContext.Provider>

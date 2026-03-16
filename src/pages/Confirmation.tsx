@@ -1,5 +1,5 @@
 import { useLocation, Link } from 'react-router-dom';
-import { CheckCircle, Download, Home, Mail } from 'lucide-react';
+import { CheckCircle, Home, Mail } from 'lucide-react';
 
 interface BookingData {
   id: string;
@@ -95,10 +95,6 @@ export default function Confirmation() {
           </div>
 
           <div className="flex flex-col sm:flex-row gap-4">
-            <button className="btn btn-primary flex-1">
-              <Download className="w-4 h-4 mr-2" />
-              Download Ticket
-            </button>
             <Link to="/" className="btn btn-outline flex-1">
               <Home className="w-4 h-4 mr-2" />
               Back to Home

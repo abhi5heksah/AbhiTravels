@@ -53,11 +53,13 @@ export default function BookingDetail() {
     phone: '',
   });
   const [showConsent, setShowConsent] = useState(false);
-  const [consentGiven, setConsentGiven] = useState(() => {
-    return !!localStorage.getItem('abhitravels_consent');
-  });
+  const [consentGiven, setConsentGiven] = useState(false);
+  const { saveConsent, revokeConsent, getConsentForEmail } = useConsent();
 
-  const { saveConsent, revokeConsent } = useConsent();
+  useEffect(() => {
+    const existingConsent = getConsentForEmail(userInfo.email);
+    setConsentGiven(!!existingConsent?.granted);
+  }, [userInfo.email, getConsentForEmail]);
 
   useEffect(() => {
     const consent = localStorage.getItem('abhitravels_consent');
@@ -110,11 +112,6 @@ export default function BookingDetail() {
                      userInfo.phone.length >= 10;
 
   const handleBooking = () => {
-    if (!consentGiven) {
-      setShowConsent(true);
-      return;
-    }
-
     const booking = {
       ...data,
       departure: mode === 'cab' ? data.pickup : data.departure,
@@ -300,9 +297,13 @@ export default function BookingDetail() {
                     checked={consentGiven}
                     onChange={(e) => {
                       if (e.target.checked) {
-                        setShowConsent(true);
+                        if (userInfo.email) {
+                           setShowConsent(true);
+                        } else {
+                           toast.error('Please enter your email first');
+                        }
                       } else {
-                        revokeConsent();
+                        revokeConsent(userInfo.email);
                         setConsentGiven(false);
                       }
                     }}

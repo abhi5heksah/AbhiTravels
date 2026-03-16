@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { X, Globe } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useConsent } from '../context/ConsentContext';
 
 
 interface ConsentBannerProps {
@@ -17,15 +18,8 @@ interface ConsentBannerProps {
 }
 
 export default function ConsentBanner({ isOpen, onClose, onSubmit, userData }: ConsentBannerProps) {
+  const { purposes } = useConsent();
   const [language, setLanguage] = useState<'en' | 'hi' | 'mr'>('en');
-  const [selectedPurposes] = useState<Record<string, boolean>>({
-    booking_confirmations: true,
-    price_alerts: true,
-    personalized_recommendations: true,
-    marketing_communications: true,
-    analytics: true,
-    third_party_promotions: true,
-  });
 
   const translations = {
     en: {
@@ -78,13 +72,14 @@ export default function ConsentBanner({ isOpen, onClose, onSubmit, userData }: C
     }
   };
 
-  const t = translations[language];
+  const t = translations[language as keyof typeof translations];
 
   if (!isOpen) return null;
 
-  const handleAcceptAll = () => {
-    const allSelected = Object.keys(selectedPurposes).map((id) => ({
-      id,
+  const handleAcceptAll = async () => {
+    // Use purposes from context (which come from ARCompli API if possible)
+    const allSelected = purposes.map((p) => ({
+      id: p.id,
       granted: true,
     }));
     onSubmit(allSelected);

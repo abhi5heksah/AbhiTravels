@@ -12,6 +12,29 @@ export interface Purpose {
   locked?: boolean;
 }
 
+const PURPOSE_UUID_MAP: Record<string, string> = {
+  'necessary': '3f6b7b58-0b2d-4e78-9d5a-2b3c7d4f9b21', // Mapping all to the provided UUID for now as requested
+  'analytics': '3f6b7b58-0b2d-4e78-9d5a-2b3c7d4f9b21',
+  'marketing': '3f6b7b58-0b2d-4e78-9d5a-2b3c7d4f9b21',
+  'preference': '3f6b7b58-0b2d-4e78-9d5a-2b3c7d4f9b21',
+  'booking_confirmations': '3f6b7b58-0b2d-4e78-9d5a-2b3c7d4f9b21',
+  'price_alerts': '3f6b7b58-0b2d-4e78-9d5a-2b3c7d4f9b21',
+  'personalized_recommendations': '3f6b7b58-0b2d-4e78-9d5a-2b3c7d4f9b21',
+  'marketing_communications': '3f6b7b58-0b2d-4e78-9d5a-2b3c7d4f9b21',
+  'third_party_promotions': '3f6b7b58-0b2d-4e78-9d5a-2b3c7d4f9b21'
+};
+
+export async function getIPAddress(): Promise<string> {
+  try {
+    const response = await fetch('https://api.ipify.org?format=json');
+    const data = await response.json();
+    return data.ip;
+  } catch (error) {
+    console.warn('Failed to fetch IP, using fallback');
+    return 'localhost';
+  }
+}
+
 export async function loadFormPurposes(): Promise<Purpose[]> {
   if (!FORM_TOKEN) {
     console.warn('Form token not configured, using fallback purposes');
@@ -39,8 +62,11 @@ export async function loadFormPurposes(): Promise<Purpose[]> {
 
 export async function recordConsent(
   subjectEmail: string,
-  consents: { purpose_id: string; granted: boolean }[]
+  consents: { purpose_id: string; granted: boolean }[],
+  metadata: { source?: string; ip?: string; userAgent?: string } = {}
 ): Promise<boolean> {
+  const ip = metadata.ip || await getIPAddress();
+  const finalMetadata = { ...metadata, ip };
   if (!API_KEY || !FORM_TOKEN) {
     console.warn('API not configured, storing consent locally only');
     storeConsentLocally(subjectEmail, consents);
@@ -48,6 +74,12 @@ export async function recordConsent(
   }
 
   try {
+    // Map purpose IDs to UUIDs to avoid 500 error
+    const mappedConsents = consents.map(c => ({
+      purpose_id: PURPOSE_UUID_MAP[c.purpose_id] || c.purpose_id,
+      granted: c.granted
+    }));
+
     const response = await fetch(`${API_BASE}/consent`, {
       method: 'POST',
       headers: {
@@ -57,7 +89,7 @@ export async function recordConsent(
       body: JSON.stringify({
         form_token: FORM_TOKEN,
         subject_email: subjectEmail,
-        consents,
+        consents: mappedConsents,
       }),
     });
 
@@ -65,18 +97,19 @@ export async function recordConsent(
       throw new Error('Failed to record consent');
     }
 
-    storeConsentLocally(subjectEmail, consents);
+    storeConsentLocally(subjectEmail, consents, finalMetadata);
     return true;
   } catch (error) {
     console.warn('API call failed, storing consent locally:', error);
-    storeConsentLocally(subjectEmail, consents);
+    storeConsentLocally(subjectEmail, consents, finalMetadata);
     return false;
   }
 }
 
 function storeConsentLocally(
   email: string,
-  consents: { purpose_id: string; granted: boolean }[]
+  consents: { purpose_id: string; granted: boolean }[],
+  metadata: { source?: string; ip?: string; userAgent?: string } = {}
 ): void {
   const purposes = consents.map(c => ({ id: c.purpose_id, granted: c.granted }));
   const consentData: ConsentData = {
@@ -84,9 +117,14 @@ function storeConsentLocally(
     purposes,
     timestamp: new Date().toISOString(),
     email,
+    ...metadata
   };
   
   try {
+    const consentsMap = JSON.parse(localStorage.getItem('abhitravels_consents') || '{}');
+    consentsMap[email] = consentData;
+    localStorage.setItem('abhitravels_consents', JSON.stringify(consentsMap));
+    // Also keep the single one for backward compatibility or simple lookup if needed
     localStorage.setItem('abhitravels_consent', JSON.stringify(consentData));
   } catch {
     console.error('Failed to store consent');

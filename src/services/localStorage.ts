@@ -1,5 +1,6 @@
 export const STORAGE_KEYS = {
-  CONSENT: 'abhitravels_consent',
+  CONSENTS: 'abhitravels_consents',
+  HISTORY: 'abhitravels_consent_history',
   PURPOSES: 'abhitravels_purposes',
   USER: 'abhitravels_user',
   SUBMISSIONS: 'abhitravels_submissions',
@@ -11,6 +12,9 @@ export interface ConsentData {
   purposes: { id: string; granted: boolean }[];
   timestamp: string;
   email: string;
+  ip?: string;
+  userAgent?: string;
+  source?: string;
 }
 
 export interface UserData {
@@ -20,27 +24,56 @@ export interface UserData {
   org: string;
 }
 
+export interface HistoryEntry {
+  email: string;
+  action: 'granted' | 'revoked' | 'updated';
+  purposes: { id: string; granted: boolean }[];
+  timestamp: string;
+  ip?: string;
+  userAgent?: string;
+  source?: string;
+}
+
 export interface Submission {
   id: string;
   data: UserData & Record<string, string>;
   submittedAt: string;
 }
 
-export function getConsent(): ConsentData | null {
+export function getConsents(): Record<string, ConsentData> {
   try {
-    const data = localStorage.getItem(STORAGE_KEYS.CONSENT);
-    return data ? JSON.parse(data) : null;
+    const data = localStorage.getItem(STORAGE_KEYS.CONSENTS);
+    return data ? JSON.parse(data) : {};
   } catch {
-    return null;
+    return {};
   }
 }
 
-export function setConsent(consent: ConsentData): void {
-  localStorage.setItem(STORAGE_KEYS.CONSENT, JSON.stringify(consent));
+export function setConsentForEmail(email: string, consent: ConsentData): void {
+  const consents = getConsents();
+  consents[email] = consent;
+  localStorage.setItem(STORAGE_KEYS.CONSENTS, JSON.stringify(consents));
 }
 
-export function clearConsent(): void {
-  localStorage.removeItem(STORAGE_KEYS.CONSENT);
+export function clearConsentForEmail(email: string): void {
+  const consents = getConsents();
+  delete consents[email];
+  localStorage.setItem(STORAGE_KEYS.CONSENTS, JSON.stringify(consents));
+}
+
+export function getHistory(): HistoryEntry[] {
+  try {
+    const data = localStorage.getItem(STORAGE_KEYS.HISTORY);
+    return data ? JSON.parse(data) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function addHistoryEntry(entry: HistoryEntry): void {
+  const history = getHistory();
+  history.push(entry);
+  localStorage.setItem(STORAGE_KEYS.HISTORY, JSON.stringify(history));
 }
 
 export function getPurposes(): Record<string, boolean> {

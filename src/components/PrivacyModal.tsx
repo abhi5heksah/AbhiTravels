@@ -9,9 +9,9 @@ interface PrivacyModalProps {
 }
 
 export default function PrivacyModal({ isOpen, onClose }: PrivacyModalProps) {
-  const { consent, purposes, saveConsent, revokeConsent } = useConsent();
+  const { consents, history, purposes, saveConsent, revokeConsent } = useConsent();
   const [localPurposes, setLocalPurposes] = useState<Record<string, boolean>>({});
-  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [revokingEmail, setRevokingEmail] = useState<string | null>(null);
   const [language, setLanguage] = useState<'en' | 'hi' | 'mr'>('en');
 
   const translations = {
@@ -80,14 +80,18 @@ export default function PrivacyModal({ isOpen, onClose }: PrivacyModalProps) {
   const t = translations[language];
 
   useEffect(() => {
-    if (consent?.purposes) {
+    // For local toggle state, we usually keep it per purpose. 
+    // Since we handle multiple emails now, we'll just show the state 
+    // for the first email found or keep it empty for manual toggling if no email is active.
+    const firstEmail = Object.keys(consents)[0];
+    if (firstEmail && consents[firstEmail]?.purposes) {
       const purposeStates: Record<string, boolean> = {};
-      consent.purposes.forEach((p: { id: string; granted: boolean }) => {
+      consents[firstEmail].purposes.forEach((p: { id: string; granted: boolean }) => {
         purposeStates[p.id] = p.granted;
       });
       setLocalPurposes(purposeStates);
     }
-  }, [consent]);
+  }, [consents]);
 
   const handleToggle = async (id: string) => {
     if (id === 'necessary') return;
@@ -97,20 +101,24 @@ export default function PrivacyModal({ isOpen, onClose }: PrivacyModalProps) {
     };
     setLocalPurposes(newPurposes);
     
-    // Auto-save
+    // Auto-save (we apply this to all active consents or just a default if we want simplified UI)
+    // For this app, let's just update the specific email if we were editing one.
+    // In a more complex UI we'd have an "editing" state. 
+    // Here we'll just update all to keep it simple as it's a demo.
     const selectedPurposes = Object.entries(newPurposes).map(([pid, granted]) => ({
       id: pid,
       granted,
     }));
-    await saveConsent(consent?.email || '', selectedPurposes);
+    Object.keys(consents).forEach(async (email) => {
+      await saveConsent(email, selectedPurposes, 'updated');
+    });
     toast.success('Preferences updated!');
   };
 
-  const handleRevoke = () => {
-    revokeConsent();
-    setLocalPurposes({});
-    setShowConfirmDialog(false);
-    toast.success('All consent revoked');
+  const handleRevoke = (email: string) => {
+    revokeConsent(email);
+    setRevokingEmail(null);
+    toast.success(`Consent revoked for ${email}`);
   };
 
   if (!isOpen) return null;
@@ -175,49 +183,55 @@ export default function PrivacyModal({ isOpen, onClose }: PrivacyModalProps) {
             )})}
           </div>
 
-          <div className="mt-6">
-            <h3 className="text-[13px] font-semibold mb-2">{t.emailConsentRequired} ({consent?.granted ? '1' : '0'})</h3>
-            {consent?.granted && consent?.email ? (
-              <div className="border border-base-200 bg-[#fbfdfd] rounded-md p-3">
-                <div className="flex justify-between items-start mb-1">
-                  <span className="font-medium text-[13px]">{consent.email}</span>
-                  <button 
-                    onClick={() => setShowConfirmDialog(true)}
-                    className="text-error text-xs font-semibold px-2 py-0.5 border border-error/30 rounded"
-                  >
-                    {t.revoke}
-                  </button>
+          <div className="mt-6 space-y-4">
+            <h3 className="text-[13px] font-semibold mb-2">{t.emailConsentRequired} ({Object.keys(consents).filter(e => consents[e].granted).length})</h3>
+            {Object.keys(consents).some(e => consents[e].granted) ? (
+              Object.keys(consents).filter(e => consents[e].granted).map(email => (
+                <div key={email} className="border border-base-200 bg-[#fbfdfd] rounded-md p-3 mb-2">
+                  <div className="flex justify-between items-start mb-1">
+                    <span className="font-medium text-[13px]">{email}</span>
+                    <button 
+                      onClick={() => setRevokingEmail(email)}
+                      className="text-error text-xs font-semibold px-2 py-0.5 border border-error/30 rounded"
+                    >
+                      {t.revoke}
+                    </button>
+                  </div>
+                  <div className="text-success text-xs flex items-center gap-1 mb-2">
+                    <Check className="w-3 h-3" />
+                    <span>{t.activeConsent} {new Date(consents[email].timestamp).toLocaleDateString()}</span>
+                  </div>
+                  <div className="text-[11px] text-base-content/70">
+                    <span className="font-medium">{t.purpose}:</span> {t.marketingUpdates}
+                  </div>
+                  <div className="text-[11px] text-base-content/70 flex justify-between mt-1">
+                    <span><span className="font-medium">{t.recentActivity}:</span> {t.consented}</span>
+                    <span>{new Date(consents[email].timestamp).toLocaleDateString()}</span>
+                  </div>
                 </div>
-                <div className="text-success text-xs flex items-center gap-1 mb-2">
-                  <Check className="w-3 h-3" />
-                  <span>{t.activeConsent} {new Date(consent.timestamp).toLocaleDateString()}</span>
-                </div>
-                <div className="text-[11px] text-base-content/70">
-                  <span className="font-medium">{t.purpose}:</span> {t.marketingUpdates}
-                </div>
-                <div className="text-[11px] text-base-content/70 flex justify-between mt-1">
-                  <span><span className="font-medium">{t.recentActivity}:</span> {t.consented}</span>
-                  <span>{new Date(consent.timestamp).toLocaleDateString()}</span>
-                </div>
-              </div>
+              ))
             ) : (
               <div className="text-xs text-base-content/60 italic">{t.noConsent}</div>
             )}
           </div>
 
           <div className="border-t border-base-200 mt-6 pt-4">
-             <h3 className="font-medium text-[13px] mb-3">{t.consentHistory} ({Object.keys(localPurposes).filter(k => localPurposes[k]).length + (consent?.granted ? 1 : 0)} {t.entries})</h3>
-             {Object.keys(localPurposes).filter(k => localPurposes[k]).map(key => (
-               <div key={key} className="flex justify-between items-center text-[11px] text-base-content/70 mb-1.5">
-                 <span>{t.granted} ({key})</span>
-                 <span>{new Date(consent?.timestamp || Date.now()).toLocaleString()}</span>
-               </div>
-             ))}
-             {consent?.granted && consent?.email && (
-               <div className="flex justify-between items-center text-[11px] text-primary mt-2">
-                 <span>Email: {consent.email}</span>
-               </div>
-             )}
+             <h3 className="font-medium text-[13px] mb-3">{t.consentHistory} ({history.length} {t.entries})</h3>
+             <div className="max-h-32 overflow-y-auto space-y-2 pr-1">
+               {history.slice().reverse().map((entry, idx) => (
+                 <div key={idx} className="text-[11px] border-b border-base-100 pb-1">
+                   <div className="flex justify-between items-center text-base-content/70">
+                     <span className={`${entry.action === 'revoked' ? 'text-error' : 'text-success'} font-medium`}>
+                       {entry.action.toUpperCase()}
+                     </span>
+                     <span>{new Date(entry.timestamp).toLocaleString()}</span>
+                   </div>
+                   <div className="text-base-content/50 truncate">
+                     {entry.email} - {entry.purposes.filter(p => p.granted).map(p => p.id).join(', ')}
+                   </div>
+                 </div>
+               ))}
+             </div>
              
              <button className="btn btn-outline btn-sm w-full mt-3 text-xs">
                <Download className="w-3 h-3 mr-1" /> {t.exportHistory}
@@ -226,18 +240,18 @@ export default function PrivacyModal({ isOpen, onClose }: PrivacyModalProps) {
         </div>
       </div>
 
-      {showConfirmDialog && (
+      {revokingEmail && (
         <div className="fixed inset-0 flex items-center justify-center bg-black/50 z-[100] pointer-events-auto">
           <div className="bg-base-100 p-6 rounded-2xl shadow-2xl max-w-sm mx-4">
             <h3 className="font-heading text-lg font-bold mb-3">{t.revokeConfirmTitle}</h3>
             <p className="text-base-content/70 text-sm mb-4">
-              {t.revokeConfirmDesc}
+              {t.revokeConfirmDesc.replace('all consent', `consent for ${revokingEmail}`)}
             </p>
             <div className="flex gap-3 justify-end">
-              <button onClick={() => setShowConfirmDialog(false)} className="btn btn-ghost btn-sm">
+              <button onClick={() => setRevokingEmail(null)} className="btn btn-ghost btn-sm">
                 {t.cancel}
               </button>
-              <button onClick={handleRevoke} className="btn btn-error btn-sm">
+              <button onClick={() => handleRevoke(revokingEmail)} className="btn btn-error btn-sm">
                 {t.yesRevoke}
               </button>
             </div>
