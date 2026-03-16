@@ -1,7 +1,10 @@
+import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import toast from 'react-hot-toast';
+import ConsentBanner from '../components/ConsentBanner';
+import { useConsent } from '../context/ConsentContext';
 
 const contactSchema = z.object({
   fullName: z.string().min(2, 'Name must be at least 2 characters'),
@@ -23,19 +26,42 @@ const genderOptions = [
 ];
 
 export default function Contact() {
-
+  const [showConsent, setShowConsent] = useState(false);
+  const [consentGiven, setConsentGiven] = useState(false);
+  const { saveConsent, revokeConsent, getConsentForEmail } = useConsent();
 
   const {
     register,
     handleSubmit,
     formState: { errors, isSubmitting },
     reset,
+    watch,
   } = useForm<ContactFormData>({
     resolver: zodResolver(contactSchema),
     defaultValues: {
       phone: '+91',
     },
   });
+
+  const emailValue = watch('email');
+  const fullNameValue = watch('fullName');
+  const phoneValue = watch('phone');
+
+  useEffect(() => {
+    if (emailValue && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailValue)) {
+      const existingConsent = getConsentForEmail(emailValue);
+      setConsentGiven(!!existingConsent?.granted);
+    } else {
+      setConsentGiven(false);
+    }
+  }, [emailValue, getConsentForEmail]);
+
+  const handleConsentSubmit = async (selectedPurposes: { id: string; granted: boolean }[]) => {
+    await saveConsent(emailValue, selectedPurposes, 'granted', 'contact_page');
+    setShowConsent(false);
+    setConsentGiven(true);
+    toast.success('Consent saved! You can now submit your inquiry.');
+  };
 
   const onSubmit = async (data: ContactFormData) => {
     try {
@@ -197,15 +223,38 @@ export default function Contact() {
                   <span className="text-error text-xs mt-1">{errors.details.message}</span>
                 )}
               </div>
-
+              <div className="form-control">
+                <label className="label cursor-pointer justify-start gap-3 border border-base-200 bg-base-50/50 rounded-lg p-3 hover:bg-base-200/30 transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={consentGiven}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        if (emailValue && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailValue)) {
+                          setShowConsent(true);
+                        } else {
+                          toast.error('Please enter a valid email address first');
+                          e.target.checked = false;
+                        }
+                      } else {
+                        revokeConsent(emailValue, 'contact_page');
+                        setConsentGiven(false);
+                      }
+                    }}
+                    className="checkbox checkbox-primary"
+                  />
+                  <span className="label-text font-medium text-sm text-base-content/70">
+                    I agree to receive travel updates and communication consent *
+                  </span>
+                </label>
+              </div>
 
 
               <button
                 type="submit"
-                disabled={isSubmitting}
-                onClick={() => {}}
-                className="btn text-white w-full border-none"
-                style={{ backgroundColor: '#5c9c94' }}
+                disabled={isSubmitting || !consentGiven}
+                className="btn text-white w-full border-none shadow-lg hover:shadow-xl transition-all active:scale-[0.98]"
+                style={{ backgroundColor: consentGiven ? '#5c9c94' : '#a0a0a0' }}
               >
                 {isSubmitting ? (
                   <span className="loading loading-spinner"></span>
@@ -221,10 +270,22 @@ export default function Contact() {
               </div>
             </form>
           </div>
+
         </div>
       </div>
 
-
+      {showConsent && (
+        <ConsentBanner
+          isOpen={showConsent}
+          onClose={() => setShowConsent(false)}
+          onSubmit={handleConsentSubmit}
+          userData={{
+            name: fullNameValue,
+            email: emailValue,
+            phone: phoneValue
+          }}
+        />
+      )}
     </div>
   );
 }
